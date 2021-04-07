@@ -3,6 +3,8 @@ from conans.errors import ConanInvalidConfiguration
 import os
 import textwrap
 
+required_conan_version = ">=1.33.0"
+
 
 class OpenCascadeConan(ConanFile):
     name = "opencascade"
@@ -38,6 +40,11 @@ class OpenCascadeConan(ConanFile):
         self.requires("freetype/2.10.4")
         self.requires("opengl/system")
 
+    def validate(self):
+        if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0" and \
+           self.settings.build_type == "Release" and self.settings.compiler.libcxx == "libstdc++":
+            raise ConanInvalidConfiguration("OpenCASCADE {} doesn't support Clang 6.0.".format(self.version))
+
     def source(self):
         tools.get(**self.conan_data["sources"][self.version])
         extracted_dir = "OCCT-" + self.version.replace(".", "_")
@@ -52,10 +59,10 @@ class OpenCascadeConan(ConanFile):
                 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
                 conan_basic_setup(TARGETS)''')
 
-        tools.replace_in_file(
-            cmakelists,
-            "${3RDPARTY_INCLUDE_DIRS}",
-            "${CONAN_INCLUDE_DIRS}")
+        tools.replace_in_file(cmakelists, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
+        tools.replace_in_file(cmakelists, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
+        tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_LIBS)", "if(0)")
+        tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_DLLS)", "if(0)")
 
         occ_toolkit_cmake = os.path.join(self._source_subfolder, "adm",
                                          "cmake", "occt_toolkit.cmake")
