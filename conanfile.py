@@ -16,6 +16,12 @@ class OpenCascadeConan(ConanFile):
     topics = ("conan", "opencascade", "occt", "3d", "modeling", "cad")
 
     settings = "os", "arch", "compiler", "build_type"
+     # TODO: add these options:
+     # - with_ffmpeg
+     # - with_freeimage
+     # - with_openvr
+     # - with_rapidjson
+     # - with_tbb
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
 
@@ -129,6 +135,14 @@ class OpenCascadeConan(ConanFile):
         self._cmake.definitions["INSTALL_DIR_SAMPLES"] = "res/samples"
         self._cmake.definitions["INSTALL_DIR_DOC"] = "res/doc"
         self._cmake.definitions["INSTALL_DIR_LAYOUT"] = "Unix"
+
+        self._cmake.definitions["BUILD_DOC_Overview"] = False
+
+        self._cmake.definitions["USE_FREEIMAGE"] = False
+        self._cmake.definitions["USE_OPENVR"] = False
+        self._cmake.definitions["USE_FFMPEG"] = False
+        self._cmake.definitions["USE_TBB"] = False
+        self._cmake.definitions["USE_RAPIDJSON"] = False
 
         self._cmake.configure(source_folder=self._source_subfolder)
         return self._cmake
