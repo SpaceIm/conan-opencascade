@@ -50,7 +50,7 @@ class OpenCascadeConan(ConanFile):
 
     def validate(self):
         if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0" and \
-           self.settings.build_type == "Release" and self.settings.compiler.libcxx == "libstdc++":
+           self.settings.build_type == "Release":
             raise ConanInvalidConfiguration("OpenCASCADE {} doesn't support Clang 6.0.".format(self.version))
 
     def source(self):
