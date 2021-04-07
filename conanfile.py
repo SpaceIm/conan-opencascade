@@ -339,7 +339,7 @@ class OpenCascadeConan(ConanFile):
                 self.cpp_info.components[conan_component_target_name].libs = [target_lib]
                 self.cpp_info.components[conan_component_target_name].requires = target_requires
                 if self.settings.os == "Windows" and not self.options.shared:
-                    self.cpp_info.components[conan_component_target_name].definitions.append("OCCT_STATIC_BUILD")
+                    self.cpp_info.components[conan_component_target_name].defines.append("OCCT_STATIC_BUILD")
                 self.cpp_info.components[conan_component_name].requires.append(conan_component_target_name)
 
                 # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
