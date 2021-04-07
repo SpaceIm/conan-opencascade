@@ -336,3 +336,9 @@ class OpenCascadeConan(ConanFile):
                     self.cpp_info.components[conan_component_target_name].requires.extend(["tcl::tcl", "tk::tk"])
                 if tools.os_info.is_posix and target_lib == "TKernel":
                     self.cpp_info.components[conan_component_target_name].system_libs.append("pthread")
+
+        # DRAWEXE executable is not created if static build
+        if self.options.shared:
+            bin_path = os.path.join(self.package_folder, "bin")
+            self.output.info("Appending PATH environment variable: {}".format(bin_path))
+            self.env_info.PATH.append(bin_path)
