@@ -38,14 +38,6 @@ class OpenCascadeConan(ConanFile):
         self.requires("freetype/2.10.4")
         self.requires("opengl/system")
 
-    def validate(self):
-        if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0":
-            raise ConanInvalidConfiguration("Clang 6.0 is not supported.")
-        if self.settings.compiler == "Visual Studio" and self.settings.compiler.version == "14":
-            raise ConanInvalidConfiguration("Visual Studio 14 is not supported.")
-        if self.settings.compiler == "Visual Studio" and self.settings.compiler.version == "15":
-            raise ConanInvalidConfiguration("Visual Studio 15 is not supported.")
-
     def source(self):
         tools.get(**self.conan_data["sources"][self.version])
         extracted_dir = "OCCT-" + self.version.replace(".", "_")
