@@ -343,7 +343,7 @@ class OpenCascadeConan(ConanFile):
                 self.cpp_info.components[conan_component_name].requires.append(conan_component_target_name)
 
                 # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
-                # TODO: which specific targets?
+                # TODO: Check EXTERNLIB file of each component in source code
                 if component == "Visualization":
                     self.cpp_info.components[conan_component_target_name].requires.extend(["freetype::freetype", "opengl::opengl"])
                 elif component == "Draw":
