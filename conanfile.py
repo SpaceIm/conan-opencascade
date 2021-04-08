@@ -64,7 +64,7 @@ class OpenCascadeConan(ConanFile):
         if self._is_linux:
             self.requires("fontconfig/2.13.93")
             self.requires("xorg/system")
-        # TODO: add ffmpeg & freeimage support
+        # TODO: add ffmpeg & freeimage support (also vtk?)
         if self.options.with_ffmpeg:
             raise ConanInvalidConfiguration("ffmpeg recipe not yet available in CCI")
         if self.options.with_freeimage:
@@ -266,7 +266,7 @@ class OpenCascadeConan(ConanFile):
 
         self._create_cmake_module_alias_targets(
             os.path.join(self.package_folder, self._module_file_rel_path),
-            {target: "OpenCASCADE::{}".format(target) for module in self._modules_toolkits.values() for target in module}
+            {target: "OpenCASCADE::{}".format(target) for module in self._occt_components.values() for target in module}
         )
 
     @staticmethod
@@ -291,116 +291,230 @@ class OpenCascadeConan(ConanFile):
                             "conan-official-{}-targets.cmake".format(self.name))
 
     @property
-    def _modules_toolkits(self):
+    def _occt_components(self):
+        # External libs
+        def _ffmpeg():
+            return ["ffmpeg::ffmpeg"] if self.options.with_ffmpeg else []
+
+        def _freeimage():
+            return ["freeimage::freeimage"] if self.options.with_freeimage else []
+
+        def _openvr():
+            return ["openvr::openvr"] if self.options.with_openvr else []
+
+        def _rapidjson():
+            return ["openvr::openvr"] if self.options.with_rapidjson else []
+
+        def _tbb():
+            return ["tbb::tbb"] if self.options.with_tbb else []
+
+        def _fontconfig():
+            return ["fontconfig::fontconfig"] if self._is_linux else []
+
+        def _xorg():
+            return ["xorg::xorg"] if self._is_linux else []
+
+        # system libs
+        def _dl():
+            return ["dl"] if self._is_linux else []
+
+        def _pthread():
+            return ["pthread"] if self._is_linux else []
+
+        def _rt():
+            return ["rt"] if self._is_linux else []
+
+        def _log():
+            return ["log"] if self.settings.os == "Android" else []
+
+        def _advapi32():
+            return ["advapi32"] if self.settings.os == "Windows" else []
+
+        def _gdi32():
+            return ["gdi32"] if self.settings.os == "Windows" else []
+
+        def _psapi():
+            return ["psapi"] if self.settings.os == "Windows" else []
+
+        def _user32():
+            return ["user32"] if self.settings.os == "Windows" else []
+
+        def _shell32():
+            return ["shell32"] if self.settings.os == "Windows" else []
+
+        def _winmm():
+            return ["winmm"] if self.settings.os == "Windows" else []
+
+        def _wsock32():
+            return ["wsock32"] if self.settings.os == "Windows" else []
+
+        # frameworks
+        def _appkit():
+            appkit = []
+            if tools.is_apple_os(self.settings.os):
+                appkit = ["UIKit"] if self.settings.os == "iOS" else ["Appkit"]
+            return appkit
+
+        def _iokit():
+            return ["IOKit"] if tools.is_apple_os(self.settings.os) else []
+
+        # components
         return {
             "FoundationClasses": {
-                "TKernel": [],
-                "TKMath": ["TKernel"],
+                "TKernel": {
+                    "external": _tbb(),
+                    "system_libs": _dl() + _pthread() + _rt() + _log() + _advapi32() + _gdi32() + _psapi() + _user32() + _wsock32(),
+                },
+                "TKMath": {
+                    "internal": ["TKernel"],
+                    "external": _tbb(),
+                },
             },
             "ModelingData": {
-                "TKG2d": ["TKernel", "TKMath"],
-                "TKG3d": ["TKMath", "TKernel", "TKG2d"],
-                "TKGeomBase": ["TKernel", "TKMath", "TKG2d", "TKG3d"],
-                "TKBRep": ["TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomBase"],
+                "TKG2d": {"internal": ["TKernel", "TKMath"]},
+                "TKG3d": {"internal": ["TKMath", "TKernel", "TKG2d"]},
+                "TKGeomBase": {
+                    "internal": ["TKernel", "TKMath", "TKG2d", "TKG3d"],
+                    "external": _tbb(),
+                },
+                "TKBRep": {"internal": ["TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomBase"]},
             },
             "ModelingAlgorithms": {
-                "TKGeomAlgo": ["TKernel", "TKMath", "TKG3d", "TKG2d", "TKGeomBase", "TKBRep"],
-                "TKTopAlgo": ["TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomBase", "TKBRep", "TKGeomAlgo"],
-                "TKPrim": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKGeomBase", "TKG3d", "TKTopAlgo"],
-                "TKBO": ["TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomAlgo", "TKGeomBase",
-                         "TKPrim", "TKShHealing"],
-                "TKBool": ["TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKPrim", "TKG2d", "TKG3d", "TKShHealing",
-                           "TKGeomBase", "TKGeomAlgo", "TKBO"],
-                "TKHLR": ["TKBRep", "TKernel", "TKMath", "TKGeomBase", "TKG2d", "TKG3d", "TKGeomAlgo", "TKTopAlgo"],
-                "TKFillet": ["TKBRep", "TKernel", "TKMath", "TKGeomBase", "TKGeomAlgo", "TKG2d", "TKTopAlgo", "TKG3d",
-                             "TKBool", "TKShHealing", "TKBO"],
-                "TKOffset": ["TKFillet", "TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKGeomBase", "TKG2d", "TKG3d",
-                             "TKGeomAlgo", "TKShHealing", "TKBO", "TKPrim", "TKBool"],
-                "TKFeat": ["TKBRep", "TKTopAlgo", "TKGeomAlgo", "TKMath", "TKernel", "TKGeomBase", "TKPrim", "TKG2d",
-                           "TKBO", "TKG3d", "TKBool", "TKShHealing"],
-                "TKMesh": ["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKShHealing", "TKGeomBase", "TKG3d", "TKG2d"],
-                "TKXMesh": ["TKBRep", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKMesh"],
-                "TKShHealing": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKTopAlgo", "TKG3d", "TKGeomBase",
-                                "TKGeomAlgo"],
+                "TKGeomAlgo": {"internal": ["TKernel", "TKMath", "TKG3d", "TKG2d", "TKGeomBase", "TKBRep"]},
+                "TKTopAlgo": {
+                    "internal": ["TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomBase", "TKBRep", "TKGeomAlgo"],
+                    "external": _tbb(),
+                },
+                "TKPrim": {"internal": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKGeomBase", "TKG3d", "TKTopAlgo"]},
+                "TKBO": {
+                    "internal": ["TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKGeomAlgo", "TKGeomBase",
+                                 "TKPrim", "TKShHealing"],
+                    "external": _tbb(),
+                },
+                "TKBool": {"internal": ["TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKPrim", "TKG2d", "TKG3d", "TKShHealing",
+                           "TKGeomBase", "TKGeomAlgo", "TKBO"]},
+                "TKHLR": {"internal": ["TKBRep", "TKernel", "TKMath", "TKGeomBase", "TKG2d", "TKG3d", "TKGeomAlgo", "TKTopAlgo"]},
+                "TKFillet": {"internal": ["TKBRep", "TKernel", "TKMath", "TKGeomBase", "TKGeomAlgo", "TKG2d", "TKTopAlgo", "TKG3d",
+                             "TKBool", "TKShHealing", "TKBO"]},
+                "TKOffset": {"internal": ["TKFillet", "TKBRep", "TKTopAlgo", "TKMath", "TKernel", "TKGeomBase", "TKG2d", "TKG3d",
+                             "TKGeomAlgo", "TKShHealing", "TKBO", "TKPrim", "TKBool"]},
+                "TKFeat": {"internal": ["TKBRep", "TKTopAlgo", "TKGeomAlgo", "TKMath", "TKernel", "TKGeomBase", "TKPrim", "TKG2d",
+                           "TKBO", "TKG3d", "TKBool", "TKShHealing"]},
+                "TKMesh": {"internal": ["TKernel", "TKMath", "TKBRep", "TKTopAlgo", "TKShHealing", "TKGeomBase", "TKG3d", "TKG2d"]},
+                "TKXMesh": {"internal": ["TKBRep", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKMesh"]},
+                "TKShHealing": {
+                    "internal": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKTopAlgo", "TKG3d", "TKGeomBase", "TKGeomAlgo"],
+                    "system_libs": _wsock32(),
+                },
             },
             "Visualization": {
-                "TKService": ["TKernel", "TKMath"],
-                "TKV3d": ["TKBRep", "TKMath", "TKernel", "TKService", "TKShHealing", "TKTopAlgo", "TKG2d", "TKG3d",
-                          "TKGeomBase", "TKMesh", "TKGeomAlgo", "TKHLR"],
-                "TKOpenGl": ["TKernel", "TKService", "TKMath"],
-                "TKMeshVS": ["TKV3d", "TKMath", "TKService", "TKernel", "TKG3d", "TKG2d"],
+                "TKService": {
+                    "internal": ["TKernel", "TKMath"],
+                    "external": ["freetype::freetype", "opengl::opengl"] + _ffmpeg() + _freeimage() + _openvr() + _xorg() + _fontconfig(),
+                    "system_libs": _advapi32() + _gdi32() + _user32() + _winmm(),
+                    "frameworks": _appkit() + _iokit(),
+                },
+                "TKV3d": {
+                    "internal": ["TKBRep", "TKMath", "TKernel", "TKService", "TKShHealing", "TKTopAlgo", "TKG2d", "TKG3d",
+                                 "TKGeomBase", "TKMesh", "TKGeomAlgo", "TKHLR"],
+                    "external": ["freetype::freetype", "opengl::opengl"] + _tbb() + _xorg(),
+                    "system_libs": _gdi32() + _user32(),
+                },
+                "TKOpenGl": {
+                    "internal": ["TKernel", "TKService", "TKMath"],
+                    "external": ["freetype::freetype", "opengl::opengl"] + _tbb() + _xorg(),
+                    "system_libs": _gdi32() + _user32(),
+                    "frameworks": _appkit() + _iokit(),
+                },
+                "TKMeshVS": {"internal": ["TKV3d", "TKMath", "TKService", "TKernel", "TKG3d", "TKG2d"]},
             },
             "ApplicationFramework": {
-                "TKCDF": ["TKernel"],
-                "TKLCAF": ["TKCDF", "TKernel"],
-                "TKCAF": ["TKernel", "TKGeomBase", "TKBRep", "TKTopAlgo", "TKMath", "TKG2d", "TKG3d", "TKCDF",
-                          "TKLCAF", "TKBO"],
-                "TKBinL": ["TKCDF", "TKernel", "TKLCAF"],
-                "TKXmlL": ["TKCDF", "TKernel", "TKMath", "TKLCAF"],
-                "TKBin": ["TKBRep", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKCAF", "TKCDF", "TKLCAF", "TKBinL"],
-                "TKXml": ["TKCDF", "TKernel", "TKMath", "TKBRep", "TKG2d", "TKGeomBase", "TKG3d", "TKLCAF", "TKCAF",
-                          "TKXmlL"],
-                "TKStdL": ["TKernel", "TKCDF", "TKLCAF"],
-                "TKStd": ["TKernel", "TKCDF", "TKCAF", "TKLCAF", "TKBRep", "TKMath", "TKG2d", "TKG3d", "TKStdL"],
-                "TKTObj": ["TKCDF", "TKernel", "TKMath", "TKLCAF"],
-                "TKBinTObj": ["TKCDF", "TKernel", "TKTObj", "TKMath", "TKLCAF", "TKBinL"],
-                "TKXmlTObj": ["TKCDF", "TKernel", "TKTObj", "TKMath", "TKLCAF", "TKXmlL"],
-                "TKVCAF": ["TKernel", "TKGeomBase", "TKBRep", "TKTopAlgo", "TKMath", "TKService", "TKG2d", "TKG3d",
-                           "TKCDF", "TKLCAF", "TKBO", "TKCAF", "TKV3d"],
+                "TKCDF": {"internal": ["TKernel"]},
+                "TKLCAF": {"internal": ["TKCDF", "TKernel"]},
+                "TKCAF": {"internal": ["TKernel", "TKGeomBase", "TKBRep", "TKTopAlgo", "TKMath", "TKG2d", "TKG3d", "TKCDF",
+                          "TKLCAF", "TKBO"]},
+                "TKBinL": {"internal": ["TKCDF", "TKernel", "TKLCAF"]},
+                "TKXmlL": {"internal": ["TKCDF", "TKernel", "TKMath", "TKLCAF"]},
+                "TKBin": {"internal": ["TKBRep", "TKMath", "TKernel", "TKG2d", "TKG3d", "TKCAF", "TKCDF", "TKLCAF", "TKBinL"]},
+                "TKXml": {"internal": ["TKCDF", "TKernel", "TKMath", "TKBRep", "TKG2d", "TKGeomBase", "TKG3d", "TKLCAF", "TKCAF",
+                          "TKXmlL"]},
+                "TKStdL": {"internal": ["TKernel", "TKCDF", "TKLCAF"]},
+                "TKStd": {"internal": ["TKernel", "TKCDF", "TKCAF", "TKLCAF", "TKBRep", "TKMath", "TKG2d", "TKG3d", "TKStdL"]},
+                "TKTObj": {"internal": ["TKCDF", "TKernel", "TKMath", "TKLCAF"]},
+                "TKBinTObj": {"internal": ["TKCDF", "TKernel", "TKTObj", "TKMath", "TKLCAF", "TKBinL"]},
+                "TKXmlTObj": {"internal": ["TKCDF", "TKernel", "TKTObj", "TKMath", "TKLCAF", "TKXmlL"]},
+                "TKVCAF": {"internal": ["TKernel", "TKGeomBase", "TKBRep", "TKTopAlgo", "TKMath", "TKService", "TKG2d", "TKG3d",
+                           "TKCDF", "TKLCAF", "TKBO", "TKCAF", "TKV3d"]},
             },
             "DataExchange": {
-                "TKXSBase": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKG3d", "TKTopAlgo", "TKGeomBase", "TKShHealing"],
-                "TKSTEPBase": ["TKernel", "TKXSBase", "TKMath"],
-                "TKSTEPAttr": ["TKernel", "TKXSBase", "TKSTEPBase"],
-                "TKSTEP209": ["TKernel", "TKXSBase", "TKSTEPBase"],
-                "TKSTEP": ["TKernel", "TKSTEPAttr", "TKSTEP209", "TKSTEPBase", "TKBRep", "TKMath", "TKG2d",
-                           "TKShHealing", "TKTopAlgo", "TKG3d", "TKGeomBase", "TKGeomAlgo", "TKXSBase"],
-                "TKIGES": ["TKBRep", "TKernel", "TKMath", "TKTopAlgo", "TKShHealing", "TKG2d", "TKG3d", "TKGeomBase",
-                           "TKGeomAlgo", "TKPrim", "TKBool", "TKXSBase"],
-                "TKXCAF": ["TKBRep", "TKernel", "TKMath", "TKService", "TKG2d", "TKTopAlgo", "TKV3d", "TKCDF", "TKLCAF",
-                           "TKG3d", "TKCAF", "TKVCAF"],
-                "TKXDEIGES": ["TKBRep", "TKernel", "TKMath", "TKXSBase", "TKCDF", "TKLCAF", "TKG2d", "TKG3d", "TKXCAF",
-                              "TKIGES"],
-                "TKXDESTEP": ["TKBRep", "TKSTEPAttr", "TKernel", "TKMath", "TKXSBase", "TKTopAlgo", "TKG2d", "TKCAF",
-                              "TKSTEPBase", "TKCDF", "TKLCAF", "TKG3d", "TKXCAF", "TKSTEP", "TKShHealing"],
-                "TKSTL": ["TKernel", "TKMath", "TKBRep", "TKG2d", "TKG3d", "TKTopAlgo"],
-                "TKVRML": ["TKBRep", "TKTopAlgo", "TKMath", "TKGeomBase", "TKernel", "TKPrim", "TKG2d", "TKG3d",
-                           "TKMesh", "TKHLR", "TKService", "TKGeomAlgo", "TKV3d", "TKLCAF", "TKXCAF"],
-                "TKXmlXCAF": ["TKXmlL", "TKBRep", "TKCDF", "TKMath", "TKernel", "TKService", "TKG2d", "TKGeomBase",
-                              "TKCAF", "TKG3d", "TKLCAF", "TKXCAF", "TKXml"],
-                "TKBinXCAF": ["TKBRep", "TKXCAF", "TKMath", "TKService", "TKernel", "TKBinL", "TKG2d", "TKCAF", "TKCDF",
-                              "TKG3d", "TKLCAF", "TKBin"],
-                "TKRWMesh": ["TKernel", "TKMath", "TKMesh", "TKXCAF", "TKLCAF", "TKV3d", "TKBRep", "TKG3d",
-                             "TKService"],
+                "TKXSBase": {"internal": ["TKBRep", "TKernel", "TKMath", "TKG2d", "TKG3d", "TKTopAlgo", "TKGeomBase", "TKShHealing"]},
+                "TKSTEPBase": {"internal": ["TKernel", "TKXSBase", "TKMath"]},
+                "TKSTEPAttr": {"internal": ["TKernel", "TKXSBase", "TKSTEPBase"]},
+                "TKSTEP209": {"internal": ["TKernel", "TKXSBase", "TKSTEPBase"]},
+                "TKSTEP": {"internal": ["TKernel", "TKSTEPAttr", "TKSTEP209", "TKSTEPBase", "TKBRep", "TKMath", "TKG2d",
+                           "TKShHealing", "TKTopAlgo", "TKG3d", "TKGeomBase", "TKGeomAlgo", "TKXSBase"]},
+                "TKIGES": {"internal": ["TKBRep", "TKernel", "TKMath", "TKTopAlgo", "TKShHealing", "TKG2d", "TKG3d", "TKGeomBase",
+                           "TKGeomAlgo", "TKPrim", "TKBool", "TKXSBase"]},
+                "TKXCAF": {"internal": ["TKBRep", "TKernel", "TKMath", "TKService", "TKG2d", "TKTopAlgo", "TKV3d", "TKCDF", "TKLCAF",
+                           "TKG3d", "TKCAF", "TKVCAF"]},
+                "TKXDEIGES": {"internal": ["TKBRep", "TKernel", "TKMath", "TKXSBase", "TKCDF", "TKLCAF", "TKG2d", "TKG3d", "TKXCAF",
+                              "TKIGES"]},
+                "TKXDESTEP": {"internal": ["TKBRep", "TKSTEPAttr", "TKernel", "TKMath", "TKXSBase", "TKTopAlgo", "TKG2d", "TKCAF",
+                              "TKSTEPBase", "TKCDF", "TKLCAF", "TKG3d", "TKXCAF", "TKSTEP", "TKShHealing"]},
+                "TKSTL": {"internal": ["TKernel", "TKMath", "TKBRep", "TKG2d", "TKG3d", "TKTopAlgo"]},
+                "TKVRML": {"internal": ["TKBRep", "TKTopAlgo", "TKMath", "TKGeomBase", "TKernel", "TKPrim", "TKG2d", "TKG3d",
+                           "TKMesh", "TKHLR", "TKService", "TKGeomAlgo", "TKV3d", "TKLCAF", "TKXCAF"]},
+                "TKXmlXCAF": {"internal": ["TKXmlL", "TKBRep", "TKCDF", "TKMath", "TKernel", "TKService", "TKG2d", "TKGeomBase",
+                              "TKCAF", "TKG3d", "TKLCAF", "TKXCAF", "TKXml"]},
+                "TKBinXCAF": {"internal": ["TKBRep", "TKXCAF", "TKMath", "TKService", "TKernel", "TKBinL", "TKG2d", "TKCAF", "TKCDF",
+                              "TKG3d", "TKLCAF", "TKBin"]},
+                "TKRWMesh": {
+                    "internal": ["TKernel", "TKMath", "TKMesh", "TKXCAF", "TKLCAF", "TKV3d", "TKBRep", "TKG3d", "TKService"],
+                    "external": _rapidjson(),
+                },
             },
             "Draw": {
-                "TKDraw": ["TKernel", "TKG2d", "TKGeomBase", "TKG3d", "TKMath", "TKBRep", "TKGeomAlgo", "TKTopAlgo",
-                           "TKShHealing", "TKMesh", "TKService", "TKHLR"],
-                "TKTopTest": ["TKBRep", "TKGeomAlgo", "TKTopAlgo", "TKernel", "TKMath", "TKBO", "TKG2d", "TKG3d",
+                "TKDraw": {
+                    "internal": ["TKernel", "TKG2d", "TKGeomBase", "TKG3d", "TKMath", "TKBRep", "TKGeomAlgo", "TKTopAlgo",
+                                 "TKShHealing", "TKMesh", "TKService", "TKHLR"],
+                    "external": ["tcl::tcl", "tk::tk"] + _tbb() + _xorg(),
+                    "system_libs": _advapi32() + _gdi32() + _user32() + _shell32(),
+                    "frameworks": _appkit() + _iokit(),
+                },
+                "TKTopTest": {"internal": ["TKBRep", "TKGeomAlgo", "TKTopAlgo", "TKernel", "TKMath", "TKBO", "TKG2d", "TKG3d",
                               "TKDraw", "TKHLR", "TKGeomBase", "TKMesh", "TKService", "TKV3d", "TKFillet", "TKPrim",
-                              "TKBool", "TKOffset", "TKFeat", "TKShHealing"],
-                "TKViewerTest": ["TKGeomBase", "TKFillet", "TKBRep", "TKTopAlgo", "TKHLR", "TKernel", "TKMath",
+                              "TKBool", "TKOffset", "TKFeat", "TKShHealing"]},
+                "TKViewerTest": {
+                    "internal": ["TKGeomBase", "TKFillet", "TKBRep", "TKTopAlgo", "TKHLR", "TKernel", "TKMath",
                                  "TKService", "TKShHealing", "TKBool", "TKPrim", "TKGeomAlgo", "TKG2d", "TKTopTest",
                                  "TKG3d", "TKOffset", "TKMesh", "TKV3d", "TKDraw", "TKOpenGl"],
-                "TKXSDRAW": ["TKBRep", "TKV3d", "TKMath", "TKernel", "TKService", "TKXSBase", "TKMeshVS", "TKG3d",
+                    "external": ["freetype::freetype", "opengl::opengl", "tcl::tcl", "tk::tk"] + _tbb() + _xorg(),
+                    "system_libs": _gdi32() + _user32(),
+                    "frameworks": _appkit() + _iokit(),
+                },
+                "TKXSDRAW": {"internal": ["TKBRep", "TKV3d", "TKMath", "TKernel", "TKService", "TKXSBase", "TKMeshVS", "TKG3d",
                              "TKViewerTest", "TKG2d", "TKSTEPBase", "TKTopAlgo", "TKGeomBase", "TKGeomAlgo", "TKMesh",
-                             "TKDraw", "TKSTEP", "TKIGES", "TKSTL", "TKVRML", "TKLCAF", "TKDCAF", "TKXCAF", "TKRWMesh"],
-                "TKDCAF": ["TKGeomBase", "TKBRep", "TKGeomAlgo", "TKernel", "TKMath", "TKG2d", "TKG3d", "TKDraw",
+                             "TKDraw", "TKSTEP", "TKIGES", "TKSTL", "TKVRML", "TKLCAF", "TKDCAF", "TKXCAF", "TKRWMesh"]},
+                "TKDCAF": {"internal": ["TKGeomBase", "TKBRep", "TKGeomAlgo", "TKernel", "TKMath", "TKG2d", "TKG3d", "TKDraw",
                            "TKCDF", "TKV3d", "TKService", "TKLCAF", "TKFillet", "TKTopAlgo", "TKPrim", "TKBool",
                            "TKBO", "TKCAF", "TKVCAF", "TKViewerTest", "TKStd", "TKStdL", "TKBin", "TKBinL", "TKXml",
-                           "TKXmlL"],
-                "TKXDEDRAW": ["TKCDF", "TKBRep", "TKXCAF", "TKernel", "TKIGES", "TKV3d", "TKMath", "TKService",
+                           "TKXmlL"]},
+                "TKXDEDRAW": {"internal": ["TKCDF", "TKBRep", "TKXCAF", "TKernel", "TKIGES", "TKV3d", "TKMath", "TKService",
                               "TKXSBase", "TKG2d", "TKCAF", "TKVCAF", "TKDraw", "TKTopAlgo", "TKLCAF", "TKG3d",
                               "TKSTEPBase", "TKSTEP", "TKMesh", "TKXSDRAW", "TKXDEIGES", "TKXDESTEP", "TKDCAF",
-                              "TKViewerTest", "TKBinXCAF", "TKXmlXCAF", "TKVRML"],
-                "TKTObjDRAW": ["TKernel", "TKCDF", "TKLCAF", "TKTObj", "TKMath", "TKDraw", "TKDCAF", "TKBinTObj",
-                               "TKXmlTObj"],
-                "TKQADraw": ["TKBRep", "TKMath", "TKernel", "TKService", "TKG2d", "TKDraw", "TKV3d", "TKGeomBase",
-                              "TKG3d", "TKViewerTest", "TKCDF", "TKDCAF", "TKLCAF", "TKFillet", "TKTopAlgo", "TKHLR",
-                              "TKBool", "TKGeomAlgo", "TKPrim", "TKBO", "TKShHealing", "TKOffset", "TKFeat", "TKCAF",
-                              "TKVCAF", "TKIGES", "TKXSBase", "TKMesh", "TKXCAF", "TKBinXCAF", "TKSTEP", "TKSTEPBase",
-                              "TKXDESTEP", "TKXSDRAW", "TKSTL", "TKXml", "TKTObj", "TKXmlL", "TKBin", "TKBinL", "TKStd",
-                              "TKStdL"],
+                              "TKViewerTest", "TKBinXCAF", "TKXmlXCAF", "TKVRML"]},
+                "TKTObjDRAW": {"internal": ["TKernel", "TKCDF", "TKLCAF", "TKTObj", "TKMath", "TKDraw", "TKDCAF", "TKBinTObj",
+                               "TKXmlTObj"]},
+                "TKQADraw": {
+                    "internal": ["TKBRep", "TKMath", "TKernel", "TKService", "TKG2d", "TKDraw", "TKV3d", "TKGeomBase",
+                                 "TKG3d", "TKViewerTest", "TKCDF", "TKDCAF", "TKLCAF", "TKFillet", "TKTopAlgo", "TKHLR",
+                                 "TKBool", "TKGeomAlgo", "TKPrim", "TKBO", "TKShHealing", "TKOffset", "TKFeat", "TKCAF",
+                                 "TKVCAF", "TKIGES", "TKXSBase", "TKMesh", "TKXCAF", "TKBinXCAF", "TKSTEP", "TKSTEPBase",
+                                 "TKXDESTEP", "TKXSDRAW", "TKSTL", "TKXml", "TKTObj", "TKXmlL", "TKBin", "TKBinL", "TKStd",
+                                 "TKStdL"],
+                    "external": _tbb(),
+                    "system_libs": _advapi32() + _gdi32() + _user32(),
+                },
             },
         }
 
@@ -408,124 +522,34 @@ class OpenCascadeConan(ConanFile):
         self.cpp_info.names["cmake_find_package"] = "OpenCASCADE"
         self.cpp_info.names["cmake_find_package_multi"] = "OpenCASCADE"
 
-        for component, targets in self._modules_toolkits.items():
-            conan_component_name = "occt_{}".format(component.lower())
+        def _to_qualified_name(target):
+            return "occt_{}".format(target.lower())
+
+        for component, targets in self._occt_components.items():
+            conan_component_name = _to_qualified_name(component)
             self.cpp_info.components[conan_component_name].names["cmake_find_package"] = component
             self.cpp_info.components[conan_component_name].names["cmake_find_package_multi"] = component
-            for target_lib, internal_requires in targets.items():
-                conan_component_target_name = "occt_{}".format(target_lib.lower())
-                target_requires = ["occt_{}".format(inter_require.lower()) for inter_require in internal_requires]
+
+            for target_lib, target_deps in targets.items():
+                conan_component_target_name = _to_qualified_name(target_lib)
+                requires = [_to_qualified_name(internal) for internal in target_deps.get("internal", [])] + \
+                           target_deps.get("external", [])
+                system_libs = target_deps.get("system_libs", [])
+                frameworks = target_deps.get("frameworks", [])
+
                 self.cpp_info.components[conan_component_target_name].names["cmake_find_package"] = target_lib
                 self.cpp_info.components[conan_component_target_name].names["cmake_find_package_multi"] = target_lib
                 self.cpp_info.components[conan_component_target_name].builddirs.append(self._module_subfolder)
                 self.cpp_info.components[conan_component_target_name].build_modules["cmake_find_package"] = [self._module_file_rel_path]
                 self.cpp_info.components[conan_component_target_name].build_modules["cmake_find_package_multi"] = [self._module_file_rel_path]
                 self.cpp_info.components[conan_component_target_name].libs = [target_lib]
-                self.cpp_info.components[conan_component_target_name].requires = target_requires
+                self.cpp_info.components[conan_component_target_name].requires = requires
+                self.cpp_info.components[conan_component_target_name].system_libs = system_libs
+                self.cpp_info.components[conan_component_target_name].frameworks = frameworks
                 if self.settings.os == "Windows" and not self.options.shared:
                     self.cpp_info.components[conan_component_target_name].defines.append("OCCT_STATIC_BUILD")
+
                 self.cpp_info.components[conan_component_name].requires.append(conan_component_target_name)
-
-        def _appkit():
-            return "UIKit" if self.settings.os == "iOS" else "Appkit"
-
-        # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
-        ## TKBO
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkbo"].requires.append("tbb::tbb")
-
-        ## TKDraw
-        self.cpp_info.components["occt_tkdraw"].requires.extend(["tcl::tcl", "tk::tk"])
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkdraw"].requires.append("tbb::tbb")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkdraw"].requires.append("xorg::xorg")
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkdraw"].system_libs.extend(["gdi32", "advapi32", "user32", "shell32"])
-        elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkdraw"].frameworks.extend([_appkit(), "IOKit"])
-
-        ## TKernel
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkernel"].requires.append("tbb::tbb")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkernel"].system_libs.extend(["dl", "pthread", "rt"])
-        elif self.settings.os == "Android":
-            self.cpp_info.components["occt_tkernel"].system_libs.append("log")
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkernel"].system_libs.extend(["advapi32", "gdi32", "psapi", "user32", "wsock32"])
-
-        ## TKGeomBase
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkgeombase"].requires.append("tbb::tbb")
-
-        ## TKMath
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkmath"].requires.append("tbb::tbb")
-
-        ## TKOpenGl
-        self.cpp_info.components["occt_tkopengl"].requires.extend(["freetype::freetype", "opengl::opengl"])
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkopengl"].requires.append("tbb::tbb")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkopengl"].requires.append("xorg::xorg")
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkopengl"].system_libs.extend(["gdi32", "user32"])
-        elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkopengl"].frameworks.extend([_appkit(), "IOKit"])
-
-        ## TKQADraw
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkqadraw"].requires.append("tbb::tbb")
-        if self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkqadraw"].system_libs.extend(["advapi32", "gdi32", "user32"])
-
-        ## TKRWMesh
-        if self.options.with_rapidjson:
-            self.cpp_info.components["occt_tkrwmesh"].requires.append("rapidjson::rapidjson")
-
-        ## TKService
-        self.cpp_info.components["occt_tkservice"].requires.extend(["freetype::freetype", "opengl::opengl"])
-        if self.options.with_ffmpeg:
-            self.cpp_info.components["occt_tkservice"].requires.append("ffmpeg::ffmpeg")
-        if self.options.with_freeimage:
-            self.cpp_info.components["occt_tkservice"].requires.append("freeimage::freeimage")
-        if self.options.with_openvr:
-            self.cpp_info.components["occt_tkservice"].requires.append("openvr::openvr")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkservice"].requires.extend(["xorg::xorg", "fontconfig::fontconfig"])
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkservice"].system_libs.extend(["advapi32", "gdi32", "user32", "winmm"])
-        elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkservice"].frameworks.extend([_appkit(), "IOKit"])
-
-        ## TKShHealing
-        if self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkshhealing"].system_libs.append("wsock32")
-
-        ## TKTopAlgo
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tktopalgo"].requires.append("tbb::tbb")
-
-        ## TKV3d
-        self.cpp_info.components["occt_tkv3d"].requires.extend(["freetype::freetype", "opengl::opengl"])
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkv3d"].requires.append("tbb::tbb")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkv3d"].requires.append("xorg::xorg")
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkv3d"].system_libs.extend(["gdi32", "user32"])
-
-        ## TKViewerTest
-        self.cpp_info.components["occt_tkviewertest"].requires.extend(["freetype::freetype", "opengl::opengl", "tcl::tcl", "tk::tk"])
-        if self.options.with_tbb:
-            self.cpp_info.components["occt_tkviewertest"].requires.append("tbb::tbb")
-        if self._is_linux:
-            self.cpp_info.components["occt_tkviewertest"].requires.append("xorg::xorg")
-        elif self.settings.os == "Windows":
-            self.cpp_info.components["occt_tkviewertest"].system_libs.extend(["gdi32", "user32"])
-        elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkviewertest"].frameworks.extend([_appkit(), "IOKit"])
 
         # DRAWEXE executable is not created if static build
         if self.options.shared:
