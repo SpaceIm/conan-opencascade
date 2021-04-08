@@ -57,6 +57,8 @@ class OpenCascadeConan(ConanFile):
         self.requires("tk/8.6.10")
         self.requires("freetype/2.10.4")
         self.requires("opengl/system")
+        if self._depends_on_fontconfig:
+            self.requires("fontconfig/2.13.93")
         # TODO: add ffmpeg & freeimage support
         if self.options.with_ffmpeg:
             raise ConanInvalidConfiguration("ffmpeg recipe not yet available in CCI")
@@ -68,6 +70,10 @@ class OpenCascadeConan(ConanFile):
             self.requires("rapidjson/1.1.0")
         if self.options.with_tbb:
             self.requires("tbb/2020.3")
+
+    @property
+    def _depends_on_fontconfig(self):
+        return not (self.settings.os in ["Windows", "Android"] or tools.is_apple_os(self.settings.os))
 
     def validate(self):
         if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0" and \
@@ -123,6 +129,12 @@ class OpenCascadeConan(ConanFile):
             os.path.join(self._source_subfolder, "adm", "cmake", "tk.cmake"),
             "${CSF_TclTkLibs}",
             tk_lib)
+        ## fontconfig
+        if self._depends_on_fontconfig:
+            tools.replace_in_file(
+                occ_csf_cmake,
+                "set (CSF_fontconfig  \"fontconfig\")",
+                "set (CSF_fontconfig  \"{}\")".format(" ".join(self.deps_cpp_info["fontconfig"].libs)))
         ## tbb
         if self.options.with_tbb:
             conan_targets.append("CONAN_PKG::tbb")
@@ -468,6 +480,8 @@ class OpenCascadeConan(ConanFile):
 
         ## TKService
         self.cpp_info.components["occt_tkservice"].requires.extend(["freetype::freetype", "opengl::opengl"])
+        if self._depends_on_fontconfig:
+            self.cpp_info.components["occt_tkservice"].requires.append("fontconfig::fontconfig")
         if self.options.with_ffmpeg:
             self.cpp_info.components["occt_tkservice"].requires.append("ffmpeg::ffmpeg")
         if self.options.with_freeimage:
