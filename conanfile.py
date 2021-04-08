@@ -44,13 +44,13 @@ class OpenCascadeConan(ConanFile):
     def _source_subfolder(self):
         return "source_subfolder"
 
-    def config_options(self):
-        if self.settings.os == "Windows":
-            del self.options.fPIC
-
     @property
     def _is_linux(self):
         return self.settings.os in ["Linux", "FreeBSD"]
+
+    def config_options(self):
+        if self.settings.os == "Windows":
+            del self.options.fPIC
 
     def configure(self):
         if self.options.shared:
@@ -208,18 +208,32 @@ class OpenCascadeConan(ConanFile):
             os.path.join(self.deps_cpp_info["tk"].rootpath, "lib")
         self._cmake.definitions["3RDPARTY_TK_INCLUDE_DIR"] = \
             self.deps_cpp_info["tk"].include_paths[0]
-        if not self.options.shared:
-            self._cmake.definitions["BUILD_LIBRARY_TYPE"] = "Static"
 
+        self._cmake.definitions["BUILD_LIBRARY_TYPE"] = "Shared" if self.options.shared else "Static"
+        self._cmake.definitions["INSTALL_TEST_CASES"] = False
+        self._cmake.definitions["BUILD_RESOURCES"] = False
+        self._cmake.definitions["BUILD_RELEASE_DISABLE_EXCEPTIONS"] = True
+        self._cmake.definitions["BUILD_USE_PCH"] = False
+        self._cmake.definitions["INSTALL_SAMPLES"] = False
+
+        self._cmake.definitions["INSTALL_DIR_LAYOUT"] = "Unix"
         self._cmake.definitions["INSTALL_DIR_BIN"] = "bin"
-        self._cmake.definitions["INSTALL_DIR_INCLUDE"] = "include"
         self._cmake.definitions["INSTALL_DIR_LIB"] = "lib"
+        self._cmake.definitions["INSTALL_DIR_INCLUDE"] = "include"
         self._cmake.definitions["INSTALL_DIR_RESOURCE"] = "res/resource"
         self._cmake.definitions["INSTALL_DIR_DATA"] = "res/data"
         self._cmake.definitions["INSTALL_DIR_SAMPLES"] = "res/samples"
         self._cmake.definitions["INSTALL_DIR_DOC"] = "res/doc"
-        self._cmake.definitions["INSTALL_DIR_LAYOUT"] = "Unix"
 
+        if self.settings.compiler == "Visual Studio":
+            self._cmake.definitions["BUILD_SAMPLES_MFC"] = False
+        self._cmake.definitions["BUILD_SAMPLES_QT"] = False
+        self._cmake.definitions["BUILD_Inspector"] = False
+        if tools.is_apple_os(self.settings.os):
+            self._cmake.definitions["USE_GLX"] = False
+        if self.settings.os == "Windows":
+            self._cmake.definitions["USE_D3D"] = False
+        self._cmake.definitions["BUILD_ENABLE_FPE_SIGNAL_HANDLER"] = False
         self._cmake.definitions["BUILD_DOC_Overview"] = False
 
         self._cmake.definitions["USE_FREEIMAGE"] = self.options.with_freeimage
@@ -292,6 +306,10 @@ class OpenCascadeConan(ConanFile):
 
     @property
     def _occt_components(self):
+        # TODO: Might be improved to something more robust and maintainable where
+        # we read in source code EXTERNLIB file of each component at package()
+        # time and generate a file which can be read at package_info() time.
+
         # External libs
         def _ffmpeg():
             return ["ffmpeg::ffmpeg"] if self.options.with_ffmpeg else []
@@ -336,11 +354,11 @@ class OpenCascadeConan(ConanFile):
         def _psapi():
             return ["psapi"] if self.settings.os == "Windows" else []
 
-        def _user32():
-            return ["user32"] if self.settings.os == "Windows" else []
-
         def _shell32():
             return ["shell32"] if self.settings.os == "Windows" else []
+
+        def _user32():
+            return ["user32"] if self.settings.os == "Windows" else []
 
         def _winmm():
             return ["winmm"] if self.settings.os == "Windows" else []
