@@ -48,6 +48,10 @@ class OpenCascadeConan(ConanFile):
         if self.settings.os == "Windows":
             del self.options.fPIC
 
+    @property
+    def _is_linux(self):
+        return self.settings.os in ["Linux", "FreeBSD"]
+
     def configure(self):
         if self.options.shared:
             del self.options.fPIC
@@ -57,8 +61,9 @@ class OpenCascadeConan(ConanFile):
         self.requires("tk/8.6.10")
         self.requires("freetype/2.10.4")
         self.requires("opengl/system")
-        if self._depends_on_fontconfig:
+        if self._is_linux:
             self.requires("fontconfig/2.13.93")
+            self.requires("xorg/system")
         # TODO: add ffmpeg & freeimage support
         if self.options.with_ffmpeg:
             raise ConanInvalidConfiguration("ffmpeg recipe not yet available in CCI")
@@ -70,10 +75,6 @@ class OpenCascadeConan(ConanFile):
             self.requires("rapidjson/1.1.0")
         if self.options.with_tbb:
             self.requires("tbb/2020.3")
-
-    @property
-    def _depends_on_fontconfig(self):
-        return not (self.settings.os in ["Windows", "Android"] or tools.is_apple_os(self.settings.os))
 
     def validate(self):
         if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0" and \
@@ -130,7 +131,7 @@ class OpenCascadeConan(ConanFile):
             "${CSF_TclTkLibs}",
             tk_lib)
         ## fontconfig
-        if self._depends_on_fontconfig:
+        if self._is_linux:
             tools.replace_in_file(
                 occ_csf_cmake,
                 "set (CSF_fontconfig  \"fontconfig\")",
@@ -425,6 +426,9 @@ class OpenCascadeConan(ConanFile):
                     self.cpp_info.components[conan_component_target_name].defines.append("OCCT_STATIC_BUILD")
                 self.cpp_info.components[conan_component_name].requires.append(conan_component_target_name)
 
+        def _appkit():
+            return "UIKit" if self.settings.os == "iOS" else "Appkit"
+
         # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
         ## TKBO
         if self.options.with_tbb:
@@ -434,16 +438,17 @@ class OpenCascadeConan(ConanFile):
         self.cpp_info.components["occt_tkdraw"].requires.extend(["tcl::tcl", "tk::tk"])
         if self.options.with_tbb:
             self.cpp_info.components["occt_tkdraw"].requires.append("tbb::tbb")
-        ### and XwLibs?
-        if self.settings.os == "Windows":
+        if self._is_linux:
+            self.cpp_info.components["occt_tkdraw"].requires.append("xorg::xorg")
+        elif self.settings.os == "Windows":
             self.cpp_info.components["occt_tkdraw"].system_libs.extend(["gdi32", "advapi32", "user32", "shell32"])
         elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkdraw"].frameworks.extend(["Appkit", "IOKit"])
+            self.cpp_info.components["occt_tkdraw"].frameworks.extend([_appkit(), "IOKit"])
 
         ## TKernel
         if self.options.with_tbb:
             self.cpp_info.components["occt_tkernel"].requires.append("tbb::tbb")
-        if self.settings.os == "Linux":
+        if self._is_linux:
             self.cpp_info.components["occt_tkernel"].system_libs.extend(["dl", "pthread", "rt"])
         elif self.settings.os == "Android":
             self.cpp_info.components["occt_tkernel"].system_libs.append("log")
@@ -462,11 +467,12 @@ class OpenCascadeConan(ConanFile):
         self.cpp_info.components["occt_tkopengl"].requires.extend(["freetype::freetype", "opengl::opengl"])
         if self.options.with_tbb:
             self.cpp_info.components["occt_tkopengl"].requires.append("tbb::tbb")
-        ### and XwLibs?
-        if self.settings.os == "Windows":
+        if self._is_linux:
+            self.cpp_info.components["occt_tkopengl"].requires.append("xorg::xorg")
+        elif self.settings.os == "Windows":
             self.cpp_info.components["occt_tkopengl"].system_libs.extend(["gdi32", "user32"])
         elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkopengl"].frameworks.extend(["Appkit", "IOKit"])
+            self.cpp_info.components["occt_tkopengl"].frameworks.extend([_appkit(), "IOKit"])
 
         ## TKQADraw
         if self.options.with_tbb:
@@ -480,19 +486,18 @@ class OpenCascadeConan(ConanFile):
 
         ## TKService
         self.cpp_info.components["occt_tkservice"].requires.extend(["freetype::freetype", "opengl::opengl"])
-        if self._depends_on_fontconfig:
-            self.cpp_info.components["occt_tkservice"].requires.append("fontconfig::fontconfig")
         if self.options.with_ffmpeg:
             self.cpp_info.components["occt_tkservice"].requires.append("ffmpeg::ffmpeg")
         if self.options.with_freeimage:
             self.cpp_info.components["occt_tkservice"].requires.append("freeimage::freeimage")
         if self.options.with_openvr:
             self.cpp_info.components["occt_tkservice"].requires.append("openvr::openvr")
-        ### and XwLibs, fontconfig, XmuLibs, dpsLibs?
-        if self.settings.os == "Windows":
+        if self._is_linux:
+            self.cpp_info.components["occt_tkservice"].requires.extend(["xorg::xorg", "fontconfig::fontconfig"])
+        elif self.settings.os == "Windows":
             self.cpp_info.components["occt_tkservice"].system_libs.extend(["advapi32", "gdi32", "user32", "winmm"])
         elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkservice"].frameworks.extend(["Appkit", "IOKit"])
+            self.cpp_info.components["occt_tkservice"].frameworks.extend([_appkit(), "IOKit"])
 
         ## TKShHealing
         if self.settings.os == "Windows":
@@ -506,19 +511,21 @@ class OpenCascadeConan(ConanFile):
         self.cpp_info.components["occt_tkv3d"].requires.extend(["freetype::freetype", "opengl::opengl"])
         if self.options.with_tbb:
             self.cpp_info.components["occt_tkv3d"].requires.append("tbb::tbb")
-        ### and XwLibs?
-        if self.settings.os == "Windows":
+        if self._is_linux:
+            self.cpp_info.components["occt_tkv3d"].requires.append("xorg::xorg")
+        elif self.settings.os == "Windows":
             self.cpp_info.components["occt_tkv3d"].system_libs.extend(["gdi32", "user32"])
 
         ## TKViewerTest
         self.cpp_info.components["occt_tkviewertest"].requires.extend(["freetype::freetype", "opengl::opengl", "tcl::tcl", "tk::tk"])
         if self.options.with_tbb:
             self.cpp_info.components["occt_tkviewertest"].requires.append("tbb::tbb")
-        ### and XwLibs?
-        if self.settings.os == "Windows":
+        if self._is_linux:
+            self.cpp_info.components["occt_tkviewertest"].requires.append("xorg::xorg")
+        elif self.settings.os == "Windows":
             self.cpp_info.components["occt_tkviewertest"].system_libs.extend(["gdi32", "user32"])
         elif tools.is_apple_os(self.settings.os):
-            self.cpp_info.components["occt_tkviewertest"].frameworks.extend(["Appkit", "IOKit"])
+            self.cpp_info.components["occt_tkviewertest"].frameworks.extend([_appkit(), "IOKit"])
 
         # DRAWEXE executable is not created if static build
         if self.options.shared:
