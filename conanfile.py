@@ -16,14 +16,24 @@ class OpenCascadeConan(ConanFile):
     topics = ("conan", "opencascade", "occt", "3d", "modeling", "cad")
 
     settings = "os", "arch", "compiler", "build_type"
-     # TODO: add these options:
-     # - with_ffmpeg
-     # - with_freeimage
-     # - with_openvr
-     # - with_rapidjson
-     # - with_tbb
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
+    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "with_ffmpeg": [True, False],
+        "with_freeimage": [True, False],
+        "with_openvr": [True, False],
+        "with_rapidjson": [True, False],
+        "with_tbb": [True, False],
+    }
+    default_options = {
+        "shared": False,
+        "fPIC": True,
+        "with_ffmpeg": False,
+        "with_freeimage": False,
+        "with_openvr": False,
+        "with_rapidjson": False,
+        "with_tbb": False,
+    }
 
     short_paths = True
 
@@ -47,6 +57,17 @@ class OpenCascadeConan(ConanFile):
         self.requires("tk/8.6.10")
         self.requires("freetype/2.10.4")
         self.requires("opengl/system")
+        # TODO: add ffmpeg & freeimage support
+        if self.options.with_ffmpeg:
+            raise ConanInvalidConfiguration("ffmpeg recipe not yet available in CCI")
+        if self.options.with_freeimage:
+            raise ConanInvalidConfiguration("freeimage recipe not yet available in CCI")
+        if self.options.with_openvr:
+            self.requires("openvr/1.14.15")
+        if self.options.with_rapidjson:
+            self.requires("rapidjson/1.1.0")
+        if self.options.with_tbb:
+            self.requires("tbb/2020.3")
 
     def validate(self):
         if self.settings.compiler == "clang" and self.settings.compiler.version == "6.0" and \
@@ -60,6 +81,10 @@ class OpenCascadeConan(ConanFile):
 
     def _patch_sources(self):
         cmakelists = os.path.join(self._source_subfolder, "CMakeLists.txt")
+        occ_toolkit_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_toolkit.cmake")
+        occ_csf_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_csf.cmake")
+
+        # Inject conanbuildinfo, upstream build files are not ready for a CMake wrapper (too much modifications required)
         tools.replace_in_file(
             cmakelists,
             "project (OCCT)",
@@ -67,19 +92,78 @@ class OpenCascadeConan(ConanFile):
                 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
                 conan_basic_setup(TARGETS)''')
 
+        # Avoid to add system include/libs directories
         tools.replace_in_file(cmakelists, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
         tools.replace_in_file(cmakelists, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
+
+        # Do not fail due to "fragile" upstream logic to find dependencies
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_LIBS)", "if(0)")
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_DLLS)", "if(0)")
 
-        occ_toolkit_cmake = os.path.join(self._source_subfolder, "adm",
-                                         "cmake", "occt_toolkit.cmake")
+        # Inject dependencies from conan, and avoid to link hardcoded libs
+        # (for example we don't want to link freetype.lib on Windows if Debug, but freetyped.lib)
+        conan_targets = ["CONAN_PKG::tcl", "CONAN_PKG::tk", "CONAN_PKG::freetype"]
+
+        ## freetype
+        tools.replace_in_file(
+            occ_csf_cmake,
+            "set (CSF_FREETYPE \"freetype\")",
+            "set (CSF_FREETYPE \"{}\")".format(" ".join(self.deps_cpp_info["freetype"].libs)))
+        ## tcl
+        tcl_libs = self.deps_cpp_info["tcl"].libs
+        tcl_lib = next(filter(lambda lib: "tcl8" in lib, tcl_libs))
+        tools.replace_in_file(
+            os.path.join(self._source_subfolder, "adm", "cmake", "tcl.cmake"),
+            "${CSF_TclLibs}",
+            tcl_lib)
+        ## tk
+        tk_libs = self.deps_cpp_info["tk"].libs
+        tk_lib = next(filter(lambda lib: "tk8" in lib, tk_libs))
+        tools.replace_in_file(
+            os.path.join(self._source_subfolder, "adm", "cmake", "tk.cmake"),
+            "${CSF_TclTkLibs}",
+            tk_lib)
+        ## tbb
+        if self.options.with_tbb:
+            conan_targets.append("CONAN_PKG::tbb")
+            tools.replace_in_file(
+                occ_csf_cmake,
+                "set (CSF_TBB \"tbb tbbmalloc\")",
+                "set (CSF_TBB \"{}\")".format(" ".join(self.deps_cpp_info["tbb"].libs)))
+        ## ffmpeg
+        if self.options.with_ffmpeg:
+            conan_targets.append("CONAN_PKG::ffmpeg")
+            tools.replace_in_file(
+                occ_csf_cmake,
+                "set (CSF_FFmpeg \"avcodec avformat swscale avutil\")",
+                "set (CSF_FFmpeg \"{}\")".format(" ".join(self.deps_cpp_info["ffmpeg"].libs)))
+        ## freeimage
+        if self.options.with_freeimage:
+            conan_targets.append("CONAN_PKG::freeimage")
+            tools.replace_in_file(
+                occ_csf_cmake,
+                "set (CSF_FreeImagePlus \"freeimage\")",
+                "set (CSF_FreeImagePlus \"{}\")".format(" ".join(self.deps_cpp_info["freeimage"].libs)))
+        ## openvr
+        if self.options.with_openvr:
+            conan_targets.append("CONAN_PKG::openvr")
+            tools.replace_in_file(
+                occ_csf_cmake,
+                "set (CSF_OpenVR \"openvr_api\")",
+                "set (CSF_OpenVR \"{}\")".format(" ".join(self.deps_cpp_info["openvr"].libs)))
+        ## don't force link libstdc++, honor settings.compiler.libcxx
+        tools.replace_in_file(
+            occ_csf_cmake,
+            "set (CSF_ThreadLibs  \"pthread rt stdc++\")",
+            "set (CSF_ThreadLibs  \"pthread rt\")")
+
+        ## Inject conan targets
         tools.replace_in_file(
             occ_toolkit_cmake,
             "${USED_EXTERNAL_LIBS_BY_CURRENT_PROJECT}",
-            """${USED_EXTERNAL_LIBS_BY_CURRENT_PROJECT}
-            CONAN_PKG::tcl CONAN_PKG::tk CONAN_PKG::freetype""")
+            "${{USED_EXTERNAL_LIBS_BY_CURRENT_PROJECT}} {}".format(" ".join(conan_targets)))
 
+        # Do not install pdb files
         tools.replace_in_file(
             occ_toolkit_cmake,
             """    install (FILES  ${CMAKE_BINARY_DIR}/${OS_WITH_BIT}/${COMPILER}/bin\\${OCCT_INSTALL_BIN_LETTER}/${PROJECT_NAME}.pdb
@@ -87,32 +171,17 @@ class OpenCascadeConan(ConanFile):
              DESTINATION "${INSTALL_DIR_BIN}\\${OCCT_INSTALL_BIN_LETTER}")""",
             "")
 
+        # No hardcoded link through #pragma
         tools.replace_in_file(
-            os.path.join(self._source_subfolder,
-                         "src", "Font", "Font_FontMgr.cxx"),
+            os.path.join(self._source_subfolder, "src", "Font", "Font_FontMgr.cxx"),
             "#pragma comment (lib, \"freetype.lib\")",
             "")
         tools.replace_in_file(
-            os.path.join(self._source_subfolder,
-                        "src", "Draw", "Draw.cxx"),
+            os.path.join(self._source_subfolder, "src", "Draw", "Draw.cxx"),
             """#pragma comment (lib, "tcl" STRINGIZE2(TCL_MAJOR_VERSION) STRINGIZE2(TCL_MINOR_VERSION) ".lib")
 #pragma comment (lib, "tk"  STRINGIZE2(TCL_MAJOR_VERSION) STRINGIZE2(TCL_MINOR_VERSION) ".lib")""",
             ""
         )
-
-        tcl_libs = self.deps_cpp_info["tcl"].libs
-        tcl_lib = next(filter(lambda lib: "tcl8" in lib, tcl_libs))
-        tools.replace_in_file(
-            os.path.join(self._source_subfolder, "adm", "cmake", "tcl.cmake"),
-            "${CSF_TclLibs}",
-            tcl_lib)
-
-        tk_libs = self.deps_cpp_info["tk"].libs
-        tk_lib = next(filter(lambda lib: "tk8" in lib, tk_libs))
-        tools.replace_in_file(
-            os.path.join(self._source_subfolder, "adm", "cmake", "tk.cmake"),
-            "${CSF_TclTkLibs}",
-            tk_lib)
 
     def _configure_cmake(self):
         if self._cmake:
@@ -140,11 +209,11 @@ class OpenCascadeConan(ConanFile):
 
         self._cmake.definitions["BUILD_DOC_Overview"] = False
 
-        self._cmake.definitions["USE_FREEIMAGE"] = False
-        self._cmake.definitions["USE_OPENVR"] = False
-        self._cmake.definitions["USE_FFMPEG"] = False
-        self._cmake.definitions["USE_TBB"] = False
-        self._cmake.definitions["USE_RAPIDJSON"] = False
+        self._cmake.definitions["USE_FREEIMAGE"] = self.options.with_freeimage
+        self._cmake.definitions["USE_OPENVR"] = self.options.with_openvr
+        self._cmake.definitions["USE_FFMPEG"] = self.options.with_ffmpeg
+        self._cmake.definitions["USE_TBB"] = self.options.with_tbb
+        self._cmake.definitions["USE_RAPIDJSON"] = self.options.with_rapidjson
 
         self._cmake.configure(source_folder=self._source_subfolder)
         return self._cmake
@@ -344,14 +413,98 @@ class OpenCascadeConan(ConanFile):
                     self.cpp_info.components[conan_component_target_name].defines.append("OCCT_STATIC_BUILD")
                 self.cpp_info.components[conan_component_name].requires.append(conan_component_target_name)
 
-                # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
-                # TODO: Check EXTERNLIB file of each component in source code
-                if component == "Visualization":
-                    self.cpp_info.components[conan_component_target_name].requires.extend(["freetype::freetype", "opengl::opengl"])
-                elif component == "Draw":
-                    self.cpp_info.components[conan_component_target_name].requires.extend(["tcl::tcl", "tk::tk"])
-                if tools.os_info.is_posix and target_lib == "TKernel":
-                    self.cpp_info.components[conan_component_target_name].system_libs.append("pthread")
+        # 3rd-party requirements taken from https://dev.opencascade.org/doc/overview/html/index.html#intro_req_libs
+        ## TKBO
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkbo"].requires.append("tbb::tbb")
+
+        ## TKDraw
+        self.cpp_info.components["occt_tkdraw"].requires.extend(["tcl::tcl", "tk::tk"])
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkdraw"].requires.append("tbb::tbb")
+        ### and XwLibs?
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkdraw"].system_libs.extend(["gdi32", "advapi32", "user32", "shell32"])
+        elif tools.is_apple_os(self.settings.os):
+            self.cpp_info.components["occt_tkdraw"].frameworks.extend(["Appkit", "IOKit"])
+
+        ## TKernel
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkernel"].requires.append("tbb::tbb")
+        if self.settings.os == "Linux":
+            self.cpp_info.components["occt_tkernel"].system_libs.extend(["dl", "pthread", "rt"])
+        elif self.settings.os == "Android":
+            self.cpp_info.components["occt_tkernel"].system_libs.append("log")
+        elif self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkernel"].system_libs.extend(["advapi32", "gdi32", "psapi", "user32", "wsock32"])
+
+        ## TKGeomBase
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkgeombase"].requires.append("tbb::tbb")
+
+        ## TKMath
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkmath"].requires.append("tbb::tbb")
+
+        ## TKOpenGl
+        self.cpp_info.components["occt_tkopengl"].requires.extend(["freetype::freetype", "opengl::opengl"])
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkopengl"].requires.append("tbb::tbb")
+        ### and XwLibs?
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkopengl"].system_libs.extend(["gdi32", "user32"])
+        elif tools.is_apple_os(self.settings.os):
+            self.cpp_info.components["occt_tkopengl"].frameworks.extend(["Appkit", "IOKit"])
+
+        ## TKQADraw
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkqadraw"].requires.append("tbb::tbb")
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkqadraw"].system_libs.extend(["advapi32", "gdi32", "user32"])
+
+        ## TKRWMesh
+        if self.options.with_rapidjson:
+            self.cpp_info.components["occt_tkrwmesh"].requires.append("rapidjson::rapidjson")
+
+        ## TKService
+        self.cpp_info.components["occt_tkservice"].requires.extend(["freetype::freetype", "opengl::opengl"])
+        if self.options.with_ffmpeg:
+            self.cpp_info.components["occt_tkservice"].requires.append("ffmpeg::ffmpeg")
+        if self.options.with_freeimage:
+            self.cpp_info.components["occt_tkservice"].requires.append("freeimage::freeimage")
+        if self.options.with_openvr:
+            self.cpp_info.components["occt_tkservice"].requires.append("openvr::openvr")
+        ### and XwLibs, fontconfig, XmuLibs, dpsLibs?
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkservice"].system_libs.extend(["advapi32", "gdi32", "user32", "winmm"])
+        elif tools.is_apple_os(self.settings.os):
+            self.cpp_info.components["occt_tkservice"].frameworks.extend(["Appkit", "IOKit"])
+
+        ## TKShHealing
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkshhealing"].system_libs.append("wsock32")
+
+        ## TKTopAlgo
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tktopalgo"].requires.append("tbb::tbb")
+
+        ## TKV3d
+        self.cpp_info.components["occt_tkv3d"].requires.extend(["freetype::freetype", "opengl::opengl"])
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkv3d"].requires.append("tbb::tbb")
+        ### and XwLibs?
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkv3d"].system_libs.extend(["gdi32", "user32"])
+
+        ## TKViewerTest
+        self.cpp_info.components["occt_tkviewertest"].requires.extend(["freetype::freetype", "opengl::opengl", "tcl::tcl", "tk::tk"])
+        if self.options.with_tbb:
+            self.cpp_info.components["occt_tkviewertest"].requires.append("tbb::tbb")
+        ### and XwLibs?
+        if self.settings.os == "Windows":
+            self.cpp_info.components["occt_tkviewertest"].system_libs.extend(["gdi32", "user32"])
+        elif tools.is_apple_os(self.settings.os):
+            self.cpp_info.components["occt_tkviewertest"].frameworks.extend(["Appkit", "IOKit"])
 
         # DRAWEXE executable is not created if static build
         if self.options.shared:
