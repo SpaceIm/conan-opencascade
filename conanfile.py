@@ -24,6 +24,7 @@ class OpenCascadeConan(ConanFile):
         "with_openvr": [True, False],
         "with_rapidjson": [True, False],
         "with_tbb": [True, False],
+        "extended_debug_messages": [True, False],
     }
     default_options = {
         "shared": False,
@@ -33,6 +34,7 @@ class OpenCascadeConan(ConanFile):
         "with_openvr": False,
         "with_rapidjson": False,
         "with_tbb": False,
+        "extended_debug_messages": False,
     }
 
     short_paths = True
@@ -51,10 +53,14 @@ class OpenCascadeConan(ConanFile):
     def config_options(self):
         if self.settings.os == "Windows":
             del self.options.fPIC
+        if self.settings.build_type != "Debug":
+            del self.options.extended_debug_messages
 
     def configure(self):
         if self.options.shared:
             del self.options.fPIC
+        if self.settings.compiler.get_safe("cppstd"):
+            tools.check_min_cppstd(self, 11)
 
     def requirements(self):
         self.requires("tcl/8.6.10")
@@ -88,8 +94,9 @@ class OpenCascadeConan(ConanFile):
 
     def _patch_sources(self):
         cmakelists = os.path.join(self._source_subfolder, "CMakeLists.txt")
-        occ_toolkit_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_toolkit.cmake")
-        occ_csf_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_csf.cmake")
+        occt_toolkit_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_toolkit.cmake")
+        occt_csf_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_csf.cmake")
+        occt_defs_flags_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_defs_flags.cmake")
 
         # Inject conanbuildinfo, upstream build files are not ready for a CMake wrapper (too much modifications required)
         tools.replace_in_file(
@@ -113,7 +120,7 @@ class OpenCascadeConan(ConanFile):
 
         ## freetype
         tools.replace_in_file(
-            occ_csf_cmake,
+            occt_csf_cmake,
             "set (CSF_FREETYPE \"freetype\")",
             "set (CSF_FREETYPE \"{}\")".format(" ".join(self.deps_cpp_info["freetype"].libs)))
         ## tcl
@@ -133,56 +140,61 @@ class OpenCascadeConan(ConanFile):
         ## fontconfig
         if self._is_linux:
             tools.replace_in_file(
-                occ_csf_cmake,
+                occt_csf_cmake,
                 "set (CSF_fontconfig  \"fontconfig\")",
                 "set (CSF_fontconfig  \"{}\")".format(" ".join(self.deps_cpp_info["fontconfig"].libs)))
         ## tbb
         if self.options.with_tbb:
             conan_targets.append("CONAN_PKG::tbb")
             tools.replace_in_file(
-                occ_csf_cmake,
+                occt_csf_cmake,
                 "set (CSF_TBB \"tbb tbbmalloc\")",
                 "set (CSF_TBB \"{}\")".format(" ".join(self.deps_cpp_info["tbb"].libs)))
         ## ffmpeg
         if self.options.with_ffmpeg:
             conan_targets.append("CONAN_PKG::ffmpeg")
             tools.replace_in_file(
-                occ_csf_cmake,
+                occt_csf_cmake,
                 "set (CSF_FFmpeg \"avcodec avformat swscale avutil\")",
                 "set (CSF_FFmpeg \"{}\")".format(" ".join(self.deps_cpp_info["ffmpeg"].libs)))
         ## freeimage
         if self.options.with_freeimage:
             conan_targets.append("CONAN_PKG::freeimage")
             tools.replace_in_file(
-                occ_csf_cmake,
+                occt_csf_cmake,
                 "set (CSF_FreeImagePlus \"freeimage\")",
                 "set (CSF_FreeImagePlus \"{}\")".format(" ".join(self.deps_cpp_info["freeimage"].libs)))
         ## openvr
         if self.options.with_openvr:
             conan_targets.append("CONAN_PKG::openvr")
             tools.replace_in_file(
-                occ_csf_cmake,
+                occt_csf_cmake,
                 "set (CSF_OpenVR \"openvr_api\")",
                 "set (CSF_OpenVR \"{}\")".format(" ".join(self.deps_cpp_info["openvr"].libs)))
         ## don't force link libstdc++, honor settings.compiler.libcxx
-        tools.replace_in_file(
-            occ_csf_cmake,
-            "set (CSF_ThreadLibs  \"pthread rt stdc++\")",
-            "set (CSF_ThreadLibs  \"pthread rt\")")
 
         ## Inject conan targets
         tools.replace_in_file(
-            occ_toolkit_cmake,
+            occt_toolkit_cmake,
             "${USED_EXTERNAL_LIBS_BY_CURRENT_PROJECT}",
             "${{USED_EXTERNAL_LIBS_BY_CURRENT_PROJECT}} {}".format(" ".join(conan_targets)))
 
         # Do not install pdb files
         tools.replace_in_file(
-            occ_toolkit_cmake,
+            occt_toolkit_cmake,
             """    install (FILES  ${CMAKE_BINARY_DIR}/${OS_WITH_BIT}/${COMPILER}/bin\\${OCCT_INSTALL_BIN_LETTER}/${PROJECT_NAME}.pdb
              CONFIGURATIONS Debug RelWithDebInfo
              DESTINATION "${INSTALL_DIR_BIN}\\${OCCT_INSTALL_BIN_LETTER}")""",
             "")
+
+        # Honor fPIC option, compiler.cppstd and compiler.libcxx
+        tools.replace_in_file(occt_defs_flags_cmake, "-fPIC", "")
+        tools.replace_in_file(occt_defs_flags_cmake, "-std=c++0x", "")
+        tools.replace_in_file(occt_defs_flags_cmake, "-std=gnu++0x", "")
+        tools.replace_in_file(occt_defs_flags_cmake, "-stdlib=libc++", "")
+        tools.replace_in_file(occt_csf_cmake,
+                              "set (CSF_ThreadLibs  \"pthread rt stdc++\")",
+                              "set (CSF_ThreadLibs  \"pthread rt\")")
 
         # No hardcoded link through #pragma
         tools.replace_in_file(
@@ -200,6 +212,10 @@ class OpenCascadeConan(ConanFile):
         if self._cmake:
             return self._cmake
         self._cmake = CMake(self)
+
+        # Inject C++ standard from profile since we have removed hardcoded C++11 from upstream build files
+        self._cmake.definitions["CMAKE_CXX_STANDARD"] = self.settings.compiler.get_safe("cppstd", "11")
+
         self._cmake.definitions["3RDPARTY_TCL_LIBRARY_DIR"] = \
             os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib")
         self._cmake.definitions["3RDPARTY_TCL_INCLUDE_DIR"] = \
@@ -213,6 +229,8 @@ class OpenCascadeConan(ConanFile):
         self._cmake.definitions["INSTALL_TEST_CASES"] = False
         self._cmake.definitions["BUILD_RESOURCES"] = False
         self._cmake.definitions["BUILD_RELEASE_DISABLE_EXCEPTIONS"] = True
+        if self.settings.build_type == "Debug":
+            self._cmake.definitions["BUILD_WITH_DEBUG"] = self.options.extended_debug_messages
         self._cmake.definitions["BUILD_USE_PCH"] = False
         self._cmake.definitions["INSTALL_SAMPLES"] = False
 
