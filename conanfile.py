@@ -215,6 +215,15 @@ class OpenCascadeConan(ConanFile):
         # Inject C++ standard from profile since we have removed hardcoded C++11 from upstream build files
         self._cmake.definitions["CMAKE_CXX_STANDARD"] = self.settings.compiler.get_safe("cppstd", "11")
 
+        self._cmake.definitions["3RDPARTY_TCL_LIBRARY_DIR"] = \
+            os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib")
+        self._cmake.definitions["3RDPARTY_TCL_INCLUDE_DIR"] = \
+            self.deps_cpp_info["tcl"].include_paths[0]
+        self._cmake.definitions["3RDPARTY_TK_LIBRARY_DIR"] = \
+            os.path.join(self.deps_cpp_info["tk"].rootpath, "lib")
+        self._cmake.definitions["3RDPARTY_TK_INCLUDE_DIR"] = \
+            self.deps_cpp_info["tk"].include_paths[0]
+
         self._cmake.definitions["BUILD_LIBRARY_TYPE"] = "Shared" if self.options.shared else "Static"
         self._cmake.definitions["INSTALL_TEST_CASES"] = False
         self._cmake.definitions["BUILD_RESOURCES"] = False
