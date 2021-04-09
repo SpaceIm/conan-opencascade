@@ -39,7 +39,7 @@ class OpenCascadeConan(ConanFile):
 
     short_paths = True
 
-    generators = "cmake", "cmake_find_package"
+    generators = "cmake"
     _cmake = None
 
     @property
@@ -100,52 +100,46 @@ class OpenCascadeConan(ConanFile):
         occt_defs_flags_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_defs_flags.cmake")
 
         # Inject conanbuildinfo, upstream build files are not ready for a CMake wrapper (too much modifications required)
+        # Also inject compile flags
         tools.replace_in_file(
             cmakelists,
             "project (OCCT)",
-            '''project (OCCT)
-                include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-                conan_basic_setup(TARGETS)''')
-
-        # Do not override CMAKE_MODULE_PATH
-        tools.replace_in_file(
-            cmakelists,
-            "set (CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")",
-            "list(APPEND CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")")
-        tools.replace_in_file(
-            cmakelists_tools,
-            "set (CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")",
-            "list(APPEND CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")")
+            "project (OCCT)\n"
+            "include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)\n"
+            "conan_basic_setup(TARGETS)\n"
+            "conan_global_flags()")
 
         # Avoid to add system include/libs directories
-        tools.replace_in_file(cmakelists, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
-        tools.replace_in_file(cmakelists, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
-        tools.replace_in_file(cmakelists_tools, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
-        tools.replace_in_file(cmakelists_tools, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
+        tools.replace_in_file(cmakelists, "3RDPARTY_INCLUDE_DIRS", "CONAN_INCLUDE_DIRS")
+        tools.replace_in_file(cmakelists, "3RDPARTY_LIBRARY_DIRS", "CONAN_LIB_DIRS")
+        tools.replace_in_file(cmakelists_tools, "3RDPARTY_INCLUDE_DIRS", "CONAN_INCLUDE_DIRS")
+        tools.replace_in_file(cmakelists_tools, "3RDPARTY_LIBRARY_DIRS", "CONAN_LIB_DIRS")
 
         # Do not fail due to "fragile" upstream logic to find dependencies
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NOT_INCLUDED)", "if(0)")
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_LIBS)", "if(0)")
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_DLLS)", "if(0)")
 
-        # Inject dependencies from conan, and avoid to link hardcoded libs
-        # (for example we don't want to link freetype.lib on Windows if Debug, but freetyped.lib)
+        # Inject dependencies from conan, and avoid to rely on upstream custom CMake files
         conan_targets = []
 
         ## freetype
         conan_targets.append("CONAN_PKG::freetype")
+        tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/freetype\")", "")
         tools.replace_in_file(
             occt_csf_cmake,
             "set (CSF_FREETYPE \"freetype\")",
             "set (CSF_FREETYPE \"{}\")".format(" ".join(self.deps_cpp_info["freetype"].libs)))
         ## tcl
         conan_targets.append("CONAN_PKG::tcl")
+        tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/tcl\")", "")
         csf_tcl_libs = "set (CSF_TclLibs \"{}\")".format(" ".join(self.deps_cpp_info["tcl"].libs))
         tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs     \"tcl86\")", csf_tcl_libs)
         tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs   Tcl)", csf_tcl_libs)
         tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs     \"tcl8.6\")", csf_tcl_libs)
         ## tk
         conan_targets.append("CONAN_PKG::tk")
+        tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/tk\")", "")
         csf_tk_libs = "set (CSF_TclTkLibs \"{}\")".format(" ".join(self.deps_cpp_info["tk"].libs))
         tools.replace_in_file(occt_csf_cmake, "set (CSF_TclTkLibs   \"tk86\")", csf_tk_libs)
         tools.replace_in_file(occt_csf_cmake, "set (CSF_TclTkLibs Tk)", csf_tk_libs)
@@ -160,6 +154,7 @@ class OpenCascadeConan(ConanFile):
         ## tbb
         if self.options.with_tbb:
             conan_targets.append("CONAN_PKG::tbb")
+            tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/tbb\")", "")
             tools.replace_in_file(
                 occt_csf_cmake,
                 "set (CSF_TBB \"tbb tbbmalloc\")",
@@ -167,6 +162,7 @@ class OpenCascadeConan(ConanFile):
         ## ffmpeg
         if self.options.with_ffmpeg:
             conan_targets.append("CONAN_PKG::ffmpeg")
+            tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/ffmpeg\")", "")
             tools.replace_in_file(
                 occt_csf_cmake,
                 "set (CSF_FFmpeg \"avcodec avformat swscale avutil\")",
@@ -174,6 +170,7 @@ class OpenCascadeConan(ConanFile):
         ## freeimage
         if self.options.with_freeimage:
             conan_targets.append("CONAN_PKG::freeimage")
+            tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/freeimage\")", "")
             tools.replace_in_file(
                 occt_csf_cmake,
                 "set (CSF_FreeImagePlus \"freeimage\")",
@@ -181,10 +178,15 @@ class OpenCascadeConan(ConanFile):
         ## openvr
         if self.options.with_openvr:
             conan_targets.append("CONAN_PKG::openvr")
+            tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/openvr\")", "")
             tools.replace_in_file(
                 occt_csf_cmake,
                 "set (CSF_OpenVR \"openvr_api\")",
                 "set (CSF_OpenVR \"{}\")".format(" ".join(self.deps_cpp_info["openvr"].libs)))
+        ## rapidjson
+        if self.options.with_rapidjson:
+            conan_targets.append("CONAN_PKG::rapidjson")
+            tools.replace_in_file(cmakelists, "OCCT_INCLUDE_CMAKE_FILE (\"adm/cmake/rapidjson\")", "")
 
         ## Inject conan targets
         tools.replace_in_file(
