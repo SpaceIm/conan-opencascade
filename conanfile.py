@@ -116,29 +116,29 @@ class OpenCascadeConan(ConanFile):
 
         # Inject dependencies from conan, and avoid to link hardcoded libs
         # (for example we don't want to link freetype.lib on Windows if Debug, but freetyped.lib)
-        conan_targets = ["CONAN_PKG::tcl", "CONAN_PKG::tk", "CONAN_PKG::freetype"]
+        conan_targets = []
 
         ## freetype
+        conan_targets.append("CONAN_PKG::freetype")
         tools.replace_in_file(
             occt_csf_cmake,
             "set (CSF_FREETYPE \"freetype\")",
             "set (CSF_FREETYPE \"{}\")".format(" ".join(self.deps_cpp_info["freetype"].libs)))
         ## tcl
-        tcl_libs = self.deps_cpp_info["tcl"].libs
-        tcl_lib = next(filter(lambda lib: "tcl8" in lib, tcl_libs))
-        tools.replace_in_file(
-            os.path.join(self._source_subfolder, "adm", "cmake", "tcl.cmake"),
-            "${CSF_TclLibs}",
-            tcl_lib)
+        conan_targets.append("CONAN_PKG::tcl")
+        csf_tcl_libs = "set (CSF_TclLibs \"{}\")".format(" ".join(self.deps_cpp_info["tcl"].libs))
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs     \"tcl86\")", csf_tcl_libs)
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs   Tcl)", csf_tcl_libs)
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclLibs     \"tcl8.6\")", csf_tcl_libs)
         ## tk
-        tk_libs = self.deps_cpp_info["tk"].libs
-        tk_lib = next(filter(lambda lib: "tk8" in lib, tk_libs))
-        tools.replace_in_file(
-            os.path.join(self._source_subfolder, "adm", "cmake", "tk.cmake"),
-            "${CSF_TclTkLibs}",
-            tk_lib)
+        conan_targets.append("CONAN_PKG::tk")
+        csf_tk_libs = "set (CSF_TclTkLibs \"{}\")".format(" ".join(self.deps_cpp_info["tk"].libs))
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclTkLibs   \"tk86\")", csf_tk_libs)
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclTkLibs Tk)", csf_tk_libs)
+        tools.replace_in_file(occt_csf_cmake, "set (CSF_TclTkLibs   \"tk8.6\")", csf_tk_libs)
         ## fontconfig
         if self._is_linux:
+            conan_targets.append("CONAN_PKG::fontconfig")
             tools.replace_in_file(
                 occt_csf_cmake,
                 "set (CSF_fontconfig  \"fontconfig\")",
@@ -171,7 +171,6 @@ class OpenCascadeConan(ConanFile):
                 occt_csf_cmake,
                 "set (CSF_OpenVR \"openvr_api\")",
                 "set (CSF_OpenVR \"{}\")".format(" ".join(self.deps_cpp_info["openvr"].libs)))
-        ## don't force link libstdc++, honor settings.compiler.libcxx
 
         ## Inject conan targets
         tools.replace_in_file(
@@ -215,15 +214,6 @@ class OpenCascadeConan(ConanFile):
 
         # Inject C++ standard from profile since we have removed hardcoded C++11 from upstream build files
         self._cmake.definitions["CMAKE_CXX_STANDARD"] = self.settings.compiler.get_safe("cppstd", "11")
-
-        self._cmake.definitions["3RDPARTY_TCL_LIBRARY_DIR"] = \
-            os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib")
-        self._cmake.definitions["3RDPARTY_TCL_INCLUDE_DIR"] = \
-            self.deps_cpp_info["tcl"].include_paths[0]
-        self._cmake.definitions["3RDPARTY_TK_LIBRARY_DIR"] = \
-            os.path.join(self.deps_cpp_info["tk"].rootpath, "lib")
-        self._cmake.definitions["3RDPARTY_TK_INCLUDE_DIR"] = \
-            self.deps_cpp_info["tk"].include_paths[0]
 
         self._cmake.definitions["BUILD_LIBRARY_TYPE"] = "Shared" if self.options.shared else "Static"
         self._cmake.definitions["INSTALL_TEST_CASES"] = False
