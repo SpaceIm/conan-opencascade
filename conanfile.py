@@ -124,6 +124,7 @@ class OpenCascadeConan(ConanFile):
         tools.replace_in_file(cmakelists_tools, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
 
         # Do not fail due to "fragile" upstream logic to find dependencies
+        tools.replace_in_file(cmakelists, "if (3RDPARTY_NOT_INCLUDED)", "if(0)")
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_LIBS)", "if(0)")
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_DLLS)", "if(0)")
 
