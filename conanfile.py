@@ -39,7 +39,7 @@ class OpenCascadeConan(ConanFile):
 
     short_paths = True
 
-    generators = "cmake"
+    generators = "cmake", "cmake_find_package"
     _cmake = None
 
     @property
@@ -94,6 +94,7 @@ class OpenCascadeConan(ConanFile):
 
     def _patch_sources(self):
         cmakelists = os.path.join(self._source_subfolder, "CMakeLists.txt")
+        cmakelists_tools = os.path.join(self._source_subfolder, "tools", "CMakeLists.txt")
         occt_toolkit_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_toolkit.cmake")
         occt_csf_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_csf.cmake")
         occt_defs_flags_cmake = os.path.join(self._source_subfolder, "adm", "cmake", "occt_defs_flags.cmake")
@@ -106,9 +107,21 @@ class OpenCascadeConan(ConanFile):
                 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
                 conan_basic_setup(TARGETS)''')
 
+        # Do not override CMAKE_MODULE_PATH
+        tools.replace_in_file(
+            cmakelists,
+            "set (CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")",
+            "list(APPEND CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")")
+        tools.replace_in_file(
+            cmakelists_tools,
+            "set (CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")",
+            "list(APPEND CMAKE_MODULE_PATH \"${CMAKE_SOURCE_DIR}/adm/cmake\")")
+
         # Avoid to add system include/libs directories
         tools.replace_in_file(cmakelists, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
         tools.replace_in_file(cmakelists, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
+        tools.replace_in_file(cmakelists_tools, "${3RDPARTY_INCLUDE_DIRS}", "${CONAN_INCLUDE_DIRS}")
+        tools.replace_in_file(cmakelists_tools, "${3RDPARTY_LIBRARY_DIRS}", "${CONAN_LIB_DIRS}")
 
         # Do not fail due to "fragile" upstream logic to find dependencies
         tools.replace_in_file(cmakelists, "if (3RDPARTY_NO_LIBS)", "if(0)")
@@ -214,15 +227,6 @@ class OpenCascadeConan(ConanFile):
 
         # Inject C++ standard from profile since we have removed hardcoded C++11 from upstream build files
         self._cmake.definitions["CMAKE_CXX_STANDARD"] = self.settings.compiler.get_safe("cppstd", "11")
-
-        self._cmake.definitions["3RDPARTY_TCL_LIBRARY_DIR"] = \
-            os.path.join(self.deps_cpp_info["tcl"].rootpath, "lib")
-        self._cmake.definitions["3RDPARTY_TCL_INCLUDE_DIR"] = \
-            self.deps_cpp_info["tcl"].include_paths[0]
-        self._cmake.definitions["3RDPARTY_TK_LIBRARY_DIR"] = \
-            os.path.join(self.deps_cpp_info["tk"].rootpath, "lib")
-        self._cmake.definitions["3RDPARTY_TK_INCLUDE_DIR"] = \
-            self.deps_cpp_info["tk"].include_paths[0]
 
         self._cmake.definitions["BUILD_LIBRARY_TYPE"] = "Shared" if self.options.shared else "Static"
         self._cmake.definitions["INSTALL_TEST_CASES"] = False
